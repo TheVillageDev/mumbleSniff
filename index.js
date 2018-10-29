@@ -1,15 +1,22 @@
 "use strict";
 
+let welcometext=""; //You can add a welcome text with ports n stuff if you want after current active people in the pinned msg
+
 const
 	dotenv = require('dotenv').config(),
 	fs = require('fs'),
 	mumble = require('mumble'),
-	TeleBot = require('telebot');
+	TeleBot = require('telebot'),
+	util = require('util');
+
+const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
 
 var options = {
 	key: fs.readFileSync('key.pem'),
 	cert: fs.readFileSync('cert.pem')
 };
+
+bot.start();
 
 function arr_diff(a1, a2) {
 	// Source: http://stackoverflow.com/a/1187628
@@ -98,30 +105,37 @@ function nl2br (str, is_xhtml) {
     return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2');
 }
 
-function objectLength(object) {
-	var length = 0;
-	for (var key in object) {
-		if (object.hasOwnProperty(key)) {
-			++length;
-		}
-	}
-	return length;
-};
-
 function getUsersFromChannel(connection, channels) {
 	var users = [];
-	for(let i = 0; i <= channels; i++) { // For every channel
-		try	{
-			for (var u in connection._channels[i].users) { // For every user in a channel
+	for(let i = 0; i <= channels; i++) {
+		try
+		{
+			for (var u in connection._channels[i].users) {
 				let username = connection._channels[i].users[u].name + "";
-				if (username !== process.env.MUMBLEUSER) {
-					users.push(username);
+				//console.log(connection._channels[i].users[u])
+				if(username==botusername)
+				{}
+				else
+				{
+					users.push(connection._channels[i].users[u].name + "");
 				}
 			}
-		} catch(e) { /* Do nothing */ }
+		}
+		catch(e)
+		{}
 	}
 	return users;
 }
+
+function ObjectLength( object ) {
+    var length = 0;
+    for( var key in object ) {
+        if( object.hasOwnProperty(key) ) {
+            ++length;
+        }
+    }
+    return length;
+};
 
 var rootCh, alt;
 
@@ -135,17 +149,20 @@ mumble.connect('mumble://' + process.env.SERVERURL, options, function(error, con
 
 	connection.authenticate(process.env.MUMBLEUSER);
 	connection.on('ready', function() {
-		rootCh = connection.rootChannel;
-		alt = getUsersFromChannel(connection, objectLength(connection._channels));
+		alt = getUsersFromChannel(connection, ObjectLength(connection._channels));
 
 		setInterval(function() {
-			var neu = getUsersFromChannel(connection, objectLength(connection._channels));
+			var neu = getUsersFromChannel(connection, ObjectLength(connection._channels));
 			var diff = arr_diff(alt, neu);
 			diff.forEach(function(u) {
 				if (alt.includes(u)) { //User ist in alt und nicht in neu
-					sendTelegramMessage(u + " has left the server. \n\nCurrently active Users: " + neu.length + " \n\n" + neu.join(", "));
+					getpinnedmessage();
+					sendTelegramMessage(u + " has left the server.");
+					edit(botUsers[0], pinnedmsgid,"Currently active Users: " + neu.length + "\n\n" + neu.join(", "));
 				} else if(neu.includes(u)) { //User ist in neu und nicht in alt
-					sendTelegramMessage(u + " has joined the server.\n\nCurrently active Users: " + neu.length + " \n\n" + neu.join(", "));
+					getpinnedmessage();
+					sendTelegramMessage(u + " has joined the server.");
+					edit(botUsers[0], pinnedmsgid,"Currently active Users: " + neu.length + "\n\n" + neu.join(", "));
 				}
 			});
 
@@ -157,11 +174,11 @@ mumble.connect('mumble://' + process.env.SERVERURL, options, function(error, con
 	});
 });
 
+var pinnedmsgid;  
 var botUsers = [];
-fs.readFileSync("loggedInUsers.log", "utf-8").split("\n").forEach((i) => { botUsers.push(i) });
 var idToName = {};
-const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
-bot.connect();
+var botusername = process.env.MUMBLEUSER;
+fs.readFileSync("loggedInUsers.log", "utf-8").split("\n").forEach((i)=>{botUsers.push(i)});
 bot.on('connect', function() {console.log("TELEG: Bot is connected.")});
 bot.on('reconnected', function() {console.log("TELEG: Bot is reconnected.")});
 bot.on('text', function(msg) {
@@ -171,7 +188,7 @@ bot.on('text', function(msg) {
   idToName[fromId] = firstName;
 
   if(msg.text == '/start') {
-  	//Neuer Nutzer, abspeichern
+  	//save new user
   	if(botUsers.includes(fromId)) {
 		bot.sendMessage(fromId, "You have already subscribed. You can quit the subscription with /stop.");
 	} else {
@@ -180,7 +197,7 @@ bot.on('text', function(msg) {
   		bot.sendMessage(fromId, "Welcome, " + firstName + "! You are now on the list and will be notified when somebody comes online. You can stop the service with /stop.");
  	}
   } else if(msg.text == '/stop') {
-  	//Benutzer abbestellen.
+  	//delete subscriber
   	arr_remove(botUsers, fromId);
   	console.log("TELEG: " + firstName + " has quit its subscription.");
   	bot.sendMessage(fromId, firstName + ", you have now unsubscribed. You can start the service again with /start.");
@@ -205,4 +222,23 @@ function sendTelegramMessage(string, except) {
 			return bot.sendMessage(botUser, string);
 		else return 0;
 	});
+}
+
+
+function getpinnedmessage()
+{
+	if(botUsers[0].toString().length==14)
+	{
+		bot.getChat(botUsers[0]).then(function(Chat)
+		{
+			pinnedmsgid = Chat.pinned_message.message_id;
+		});
+	}
+}
+getpinnedmessage();
+
+function edit(chatId, messageId, text)
+{
+	text = text + "\n\n" + welcometext;
+	bot.editMessageText({chatId, messageId},text, {parseMode: 'markdown'}).catch(error => console.log("Error: ", error));
 }
