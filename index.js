@@ -7,7 +7,8 @@ const
 	fs = require('fs'),
 	mumble = require('mumble'),
 	TeleBot = require('telebot'),
-	util = require('util');
+	util = require('util'),
+	silent = 1;
 
 const bot = new TeleBot(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -219,7 +220,10 @@ function sendTelegramMessage(string, except) {
 
 	botUsers.forEach(function(botUser) {
 		if(botUser !== except)
-			return bot.sendMessage(botUser, string);
+			if(silent==0)
+				return bot.sendMessage(botUser, string);
+			else
+				return bot.sendMessage(botUser, string, {disable_notification: 1}
 		else return 0;
 	});
 }
